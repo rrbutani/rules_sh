@@ -20,10 +20,15 @@ def _sh_posix_hermetic_toolchain_impl(ctx):
     unrecognizeds = [
         cmd
         for cmd in sh_binaries_info.executables.keys()
-        if cmd not in _commands
+        if cmd not in (_commands + ctx.attr.extra_commands)
     ]
     if unrecognizeds:
-        fail("Unrecognized commands in keys of sh_posix_hermetic_toolchain's \"cmds\" attribute: {}. See posix_hermetic.commands in @rules_sh//sh/experimental:posix_hermetic.bzl for the list of recognized commands.".format(", ".join(unrecognizeds)))
+        fail("Unrecognized commands in keys of sh_posix_hermetic_toolchain's \"cmds\" attribute: {}. See posix_hermetic.commands in @rules_sh//sh/experimental:posix_hermetic.bzl for the list of recognized commands. Alternatively, see the `extra_commands` attribute.".format(", ".join(unrecognizeds)))
+
+    missing_extra_commands = [e for e in ctx.attr.extra_commands if e not in sh_binaries_info.executables]
+    if missing_extra_commands:
+        fail("Some \"extra_commands\" specified were not present in sh_posix_hermetic_toolchain's \"cmds\" attribute: {}".format(", ".join(missing_extra_commands)))
+
 
     return [platform_common.ToolchainInfo(
         sh_binaries_info = sh_binaries_info,
@@ -32,7 +37,7 @@ def _sh_posix_hermetic_toolchain_impl(ctx):
         # exposed for backwards compatibility.
         commands = {
             cmd: sh_binaries_info.executables[cmd].path if cmd in sh_binaries_info.executables else None
-            for cmd in _commands
+            for cmd in (_commands + ctx.attr.extra_commands)
         },
         paths = sh_binaries_info.paths.to_list(),
     )]
@@ -42,6 +47,10 @@ sh_posix_hermetic_toolchain = rule(
         "cmds": attr.label(
             doc = "sh_binaries target that captures the tools to include in this toolchain.",
             mandatory = True,
+        ),
+        "extra_commands": attr.string_list(
+            mandatory = False, allow_empty = True, default = [],
+            doc = "extra commands (in addition to POSIX) to allow in `cmds`",
         ),
     },
     implementation = _sh_posix_hermetic_toolchain_impl,

@@ -22,14 +22,20 @@ MAKE_VARIABLES = "@rules_sh//sh/posix:make_variables"
 def _sh_posix_toolchain_impl(ctx):
     commands = {}
     cmds = ctx.attr.cmds
-    for cmd in _commands:
+    for cmd in _commands + ctx.attr.extra_commands:
         cmd_path = cmds.get(cmd, None)
         if not cmd_path:
             cmd_path = None
         commands[cmd] = cmd_path
+
     unrecognizeds = [cmd for cmd in cmds.keys() if cmd not in _commands]
     if unrecognizeds:
         fail("Unrecognized commands in keys of sh_posix_toolchain's \"cmds\" attributes: {}. See posix.commands in @rules_sh//sh:posix.bzl for the list of recognized commands.".format(", ".join(unrecognizeds)))
+
+    missing_extra_commands = [e for e in ctx.attr.extra_commands if e not in commands]
+    if missing_extra_commands:
+        fail("Some \"extra_commands\" specified were not present in sh_posix_toolchain's \"cmds\" attribute: {}".format(", ".join(missing_extra_commands)))
+
     cmd_paths = {
         paths.dirname(cmd_path): None
         for cmd_path in commands.values()
@@ -45,6 +51,10 @@ sh_posix_toolchain = rule(
         "cmds": attr.string_dict(
             doc = "dict where keys are command names and values are paths",
             mandatory = True,
+        ),
+        "extra_commands": attr.string_list(
+            mandatory = False, allow_empty = True, default = [],
+            doc = "extra commands (in addition to POSIX) to look for in `cmds`",
         ),
     },
     doc = """
@@ -65,9 +75,8 @@ def _sh_posix_make_variables_impl(ctx):
 
     if not hasattr(toolchain, "sh_binaries_info"):
         cmd_vars = {
-            "POSIX_%s" % cmd.upper(): cmd_path
-            for cmd in _commands
-            for cmd_path in [toolchain.commands[cmd]]
+            ("POSIX_%s" if cmd in _commands else "%s") % cmd.upper(): cmd_path
+            for cmd, cmd_path in toolchain.commands
             if cmd_path
         }
         return [platform_common.TemplateVariableInfo(cmd_vars)]
@@ -92,7 +101,9 @@ Provides POSIX toolchain commands as custom make variables.
 
 Make variables:
   Provides a make variable of the form `POSIX_<COMMAND>` for each available
-  command, where `<COMMAND>` is the name of the command in upper case.
+  POSIX command, where `<COMMAND>` is the name of the command in upper case.
+
+  Extra commands in the toolchain are available as `<COMMAND>`.
 
 Use `posix.MAKE_VARIABLES` instead of instantiating this rule yourself.
 
